@@ -1,1 +1,1 @@
-npm run dev to see your expenses.
+npm run dev to manage your expenses.
