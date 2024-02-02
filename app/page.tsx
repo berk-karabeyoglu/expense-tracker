@@ -9,8 +9,8 @@ import {
   query,
 } from "firebase/firestore";
 
+import { db } from "@/app/firebase";
 import React, { useEffect, useRef, useState } from "react";
-import { db } from "./firebase";
 
 export default function Home() {
   const [items, setItems] = useState([]);
