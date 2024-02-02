@@ -71,7 +71,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-between sm:p-24 p-4 bg-slate-900">
       <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm ">
         <h1 className="text-4xl p-4 text-center text-white">
-          Betül's Expense Tracker
+          Betül`s Expense Tracker
         </h1>
 
         <div className="bg-slate-800 p-4 rounded-lg mt-16">
