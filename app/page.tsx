@@ -94,13 +94,13 @@ export default function Home() {
 
   if (!loading)
     return (
-      <main className="flex min-h-screen flex-col items-center justify-between sm:p-24 p-4 bg-slate-900">
+      <main className="flex min-h-screen flex-col items-center justify-between bg-slate-900 md:px-0 px-4">
         <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm ">
-          <h1 className="text-4xl p-4 text-center text-white">
-            Betül`s Expense Tracker
+          <h1 className="text-4xl  text-center text-white md:py-16 py-14">
+            Expense Tracker
           </h1>
 
-          <div className="bg-slate-800 p-4 rounded-lg mt-16">
+          <div className="bg-slate-800 p-4 rounded-lg ">
             <form className="grid grid-cols-6 items-center text-black">
               <input
                 ref={(input) => {
@@ -112,7 +112,7 @@ export default function Home() {
                 }
                 className="col-span-3 p-3 border"
                 type="text"
-                placeholder="Enter Item"
+                placeholder="Item Name"
               />
               <input
                 value={newItem.price}
@@ -121,7 +121,7 @@ export default function Home() {
                 }
                 className="col-span-2 p-3 border mx-3"
                 type="number"
-                placeholder="Enter ₺"
+                placeholder="₺"
               />
               <button
                 onClick={addItem}
@@ -141,13 +141,13 @@ export default function Home() {
                 .map((item: any, id: any) => (
                   <li
                     key={id}
-                    className="my-4 w-full flex justify-between bg-slate-950 text-white"
+                    className="my-4 w-full flex items-center bg-slate-950 text-white"
                   >
-                    <div className="p-4 w-full flex justify-between">
+                    <div className="p-4 w-full flex justify-between items-center">
                       <span className="capitalize">
                         {item.name}{" "}
                         <span className="text-[0.68rem]">
-                          ({item.creationDate})
+                          <br /> ({item.creationDate})
                         </span>
                       </span>
                       <span>{item.price} ₺</span>
