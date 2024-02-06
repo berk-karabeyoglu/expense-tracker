@@ -41,6 +41,10 @@ export default function Home() {
   const addItem = async (e: any) => {
     e.preventDefault();
 
+    if (newItem.price.includes(",") == true) {
+      alert("Input cannot contain commas. Try with a period.");
+    }
+
     if (newItem.name !== "" && newItem.price !== "") {
       await addDoc(collection(db, "items"), {
         name: newItem.name.trim(),
@@ -50,7 +54,7 @@ export default function Home() {
       setNewItem({ name: "", price: "", creationDate: "" });
       itemRef.current.focus();
     } else {
-      alert("Item or price can not be empty!");
+      alert("Item or price cannot be empty!");
     }
   };
 
@@ -129,35 +133,40 @@ export default function Home() {
             </form>
 
             <ul>
-              {items.map((item: any, id: any) => (
-                <li
-                  key={id}
-                  className="my-4 w-full flex justify-between bg-slate-950 text-white"
-                >
-                  <div className="p-4 w-full flex justify-between">
-                    <span className="capitalize">
-                      {item.name}{" "}
-                      <span className="text-[0.68rem]">
-                        ({item.creationDate})
-                      </span>
-                    </span>
-                    <span>{item.price} ₺</span>
-                  </div>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    className="ml-8 p-4 border-l-2 border-slate-900 hover:bg-slate-900 w-16 cursor-pointer"
+              {items
+                .sort(
+                  (a: any, b: any) =>
+                    b.creationDate.slice(0, 2) - a.creationDate.slice(0, 2)
+                )
+                .map((item: any, id: any) => (
+                  <li
+                    key={id}
+                    className="my-4 w-full flex justify-between bg-slate-950 text-white"
                   >
-                    X
-                  </button>
-                </li>
-              ))}
+                    <div className="p-4 w-full flex justify-between">
+                      <span className="capitalize">
+                        {item.name}{" "}
+                        <span className="text-[0.68rem]">
+                          ({item.creationDate})
+                        </span>
+                      </span>
+                      <span>{item.price} ₺</span>
+                    </div>
+                    <button
+                      onClick={() => deleteItem(item.id)}
+                      className="ml-8 p-4 border-l-2 border-slate-900 hover:bg-slate-900 w-16 cursor-pointer"
+                    >
+                      X
+                    </button>
+                  </li>
+                ))}
             </ul>
             {items.length < 1 ? (
               ""
             ) : (
               <div className="flex justify-between p-3 text-white">
                 <span>Total</span>
-                <span>{total} ₺</span>
+                <span>{total.toFixed(2)} ₺</span>
               </div>
             )}
           </div>
