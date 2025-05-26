@@ -13,7 +13,6 @@ import {
   where,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
-
 import { db, auth } from "@/app/firebase";
 import Auth from "@/components/Auth";
 import Loading from "@/components/Loading";
@@ -36,44 +35,32 @@ export default function Home() {
 
   const itemRef = useRef<HTMLInputElement | null>(null);
 
-  // Tarihi formatla
+  // Bugünün tarihi
   const today = new Date();
   const yyyy = today.getFullYear();
-  let mm: number | string = today.getMonth() + 1;
-  let dd: number | string = today.getDate();
-
+  let mm: string | number = today.getMonth() + 1;
+  let dd: string | number = today.getDate();
   if (dd < 10) dd = "0" + dd;
   if (mm < 10) mm = "0" + mm;
+  const formattedToday = `${dd}/${mm}/${yyyy}`;
 
-  const formattedToday = dd + "/" + mm + "/" + yyyy;
-
-  // Kullanıcı durumunu takip et, username de çek
+  // Kullanıcıyı dinle
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-
       if (currentUser) {
-        try {
-          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-          if (userDoc.exists()) {
-            setUsername(userDoc.data().name || "");
-          } else {
-            setUsername("");
-          }
-        } catch {
-          setUsername("");
-        }
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) setUsername(userDoc.data().name || "");
+        else setUsername("");
       } else {
         setUsername("");
       }
-
       setAuthChecked(true);
     });
-
     return () => unsubscribe();
   }, []);
 
-  // Firestore'dan kullanıcıya özel verileri oku
+  // Verileri getir
   useEffect(() => {
     if (!user) {
       setItems([]);
@@ -82,57 +69,38 @@ export default function Home() {
     }
 
     setLoading(true);
-
     const q = query(collection(db, "items"), where("userId", "==", user.uid));
-
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      let itemsArr: any[] = [];
-
-      querySnapshot.forEach((doc) => {
-        itemsArr.push({ ...doc.data(), id: doc.id });
-      });
-
-      // createdAt'a göre sırala (en yeni üstte)
+      const itemsArr: any[] = [];
+      querySnapshot.forEach((doc) =>
+        itemsArr.push({ ...doc.data(), id: doc.id })
+      );
       itemsArr.sort((a, b) => {
         if (!a.createdAt || !b.createdAt) return 0;
         const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
         const bTime = b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
         return bTime - aTime;
       });
-
       setItems(itemsArr);
-
-      // Toplamı hesapla
       const totalPrice = itemsArr.reduce(
         (sum, item) => sum + parseFloat(item.price),
         0
       );
       setTotal(totalPrice);
-
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // Yeni item ekle
+  // Ekle
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!user) {
-      toast.error("Lütfen önce giriş yapın.");
-      return;
-    }
-
-    if (newItem.price.includes(",")) {
-      toast.warn("Fiyat kısmında virgül kullanmayın. Lütfen nokta kullanın.");
-      return;
-    }
-
-    if (newItem.name === "" || newItem.price === "") {
-      toast.warn("Ürün adı ve fiyat boş olamaz!");
-      return;
-    }
+    if (!user) return toast.error("Lütfen önce giriş yapın.");
+    if (newItem.price.includes(","))
+      return toast.warn("Virgül değil nokta kullanın.");
+    if (newItem.name === "" || newItem.price === "")
+      return toast.warn("Ürün adı veya fiyat boş olamaz!");
 
     try {
       await addDoc(collection(db, "items"), {
@@ -144,16 +112,18 @@ export default function Home() {
       });
       setNewItem({ name: "", price: "", creationDate: "" });
       itemRef.current?.focus();
-      toast.success("Harcamaya eklendi!");
-    } catch (error) {
+      toast.success("Harcama eklendi!", {
+        position: "top-right",
+        autoClose: 1500,
+      });
+    } catch {
       toast.error("Harcamayı eklerken hata oluştu.");
     }
   };
 
-  // Silme işlemi için toast onayı göster
+  // Silme onayı
   const confirmDelete = (id: string) => {
     setPendingDeleteId(id);
-
     toast.info(
       <div>
         <p>Bu harcamayı silmek istediğine emin misin?</p>
@@ -163,7 +133,8 @@ export default function Home() {
               deleteItem(id);
               toast.dismiss();
             }}
-            className="bg-red-600 px-3 py-1 rounded text-white"
+            className="bg-red-600 px-3 py-1 rounded text-white hover:bg-opacity-80 transition"
+            title="Sil"
           >
             Evet
           </button>
@@ -172,119 +143,112 @@ export default function Home() {
               setPendingDeleteId(null);
               toast.dismiss();
             }}
-            className="bg-gray-500 px-3 py-1 rounded text-white"
+            className="bg-gray-500 px-3 py-1 rounded text-white :hover:bg-opacity-80 transition"
+            title="İptal"
           >
             Hayır
           </button>
         </div>
       </div>,
-      {
-        position: "top-center",
-        autoClose: false,
-        closeOnClick: false,
-        closeButton: false,
-        draggable: false,
-        pauseOnHover: true,
-      }
+      { position: "top-center", autoClose: false, closeButton: false }
     );
   };
 
-  // Item sil
+  // Sil
   const deleteItem = async (id: string) => {
     try {
       await deleteDoc(doc(db, "items", id));
-      toast.success("Harcamayı sildin.");
+      toast.success("Harcama silindi.", {
+        position: "top-right",
+        autoClose: 1500,
+      });
       setPendingDeleteId(null);
-      toast.dismiss();
-    } catch (error) {
+    } catch {
       toast.error("Silme işlemi başarısız.");
     }
   };
 
-  if (!authChecked) {
-    return <Loading />;
-  }
-
+  if (!authChecked) return <Loading />;
   if (loading) return <Loading />;
 
   if (user)
     return (
-      <main className="flex min-h-screen flex-col bg-slate-900 md:px-0 px-4">
+      <main className="flex min-h-screen flex-col bg-slate-900 px-2 sm:px-6 py-6">
         <ToastContainer />
-        <header className="flex justify-between items-center max-w-5xl mx-auto w-full py-4">
-          <h1 className="text-4xl text-white font-bold">Expense Tracker</h1>
-          <div className="flex items-center gap-4 text-white">
-            <span className="hidden sm:inline-block">
+        <header className="max-w-4xl mx-auto w-full flex justify-between items-center py-4 mb-4 sm:px-0 px-4 text-white">
+          <h1 className="text-3xl font-bold">Harcamalarım</h1>
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:inline">
               Hoşgeldin, <strong>{username || user.email}</strong>
             </span>
             <button
               onClick={() => auth.signOut()}
-              className="bg-red-600 hover:bg-red-700 transition text-white px-4 py-2 rounded"
+              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
             >
-              Çıkış Yap
+              Çıkış
             </button>
           </div>
         </header>
 
-        <div className="z-10 w-full max-w-5xl mx-auto flex-grow flex flex-col justify-start font-mono text-sm">
-          <div className="bg-slate-800 p-4 rounded-lg mt-4">
-            <form
-              className="grid grid-cols-6 gap-2 items-center text-black"
-              onSubmit={addItem}
+        <section className="w-full max-w-4xl mx-auto bg-slate-800 p-4 sm:p-6 rounded-lg shadow-lg text-white">
+          <form
+            onSubmit={addItem}
+            className="flex flex-col sm:grid sm:grid-cols-6 gap-3"
+          >
+            <input
+              ref={itemRef}
+              value={newItem.name}
+              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+              className="w-full sm:col-span-3 p-4 text-gray-700 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
+              type="text"
+              placeholder="Ürün Adı"
+            />
+            <input
+              value={newItem.price}
+              onChange={(e) =>
+                setNewItem({ ...newItem, price: e.target.value })
+              }
+              className="w-full sm:col-span-2 p-4 rounded-lg border text-gray-700 border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
+              type="number"
+              placeholder="₺"
+            />
+            <button
+              type="submit"
+              className="w-full sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-4 text-3xl font-bold transition"
             >
-              <input
-                ref={(input) => {
-                  itemRef.current = input;
-                }}
-                value={newItem.name}
-                onChange={(e) =>
-                  setNewItem({ ...newItem, name: e.target.value })
-                }
-                className="col-span-6 sm:col-span-3 p-3 border rounded"
-                type="text"
-                placeholder="Item Name"
-              />
-              <input
-                value={newItem.price}
-                onChange={(e) =>
-                  setNewItem({ ...newItem, price: e.target.value })
-                }
-                className="col-span-6 sm:col-span-2 p-3 border rounded"
-                type="number"
-                placeholder="₺"
-              />
-              <button
-                className="col-span-6 sm:col-span-1 text-white bg-slate-950 hover:bg-slate-900 p-3 text-xl rounded cursor-pointer transition"
-                type="submit"
-              >
-                +
-              </button>
-            </form>
+              +
+            </button>
+          </form>
 
-            <ul>
-              {items.map((item) => (
-                <li
-                  key={item.id}
-                  className="my-4 w-full flex flex-col sm:flex-row items-start sm:items-center bg-slate-950 text-white rounded"
-                >
-                  <div className="p-4 flex-grow flex justify-between w-full sm:w-auto">
-                    <span className="capitalize break-words">
-                      {item.name}{" "}
-                      <span className="text-[0.68rem] block sm:inline">
-                        ({item.creationDate})
-                      </span>
-                    </span>
-                    <span>{item.price} ₺</span>
-                  </div>
+          <ul className="mt-6 space-y-3">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-center justify-between bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg transition-colors"
+              >
+                {/* Sol taraf: Ürün adı + tarih */}
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="text-white font-medium capitalize truncate">
+                    {item.name}
+                  </span>
+                  <span className="text-xs text-gray-400 mt-1">
+                    {item.creationDate}
+                  </span>
+                </div>
+
+                {/* Sağ taraf: Fiyat + Sil butonu */}
+                <div className="flex flex-col items-end justify-between ml-4 gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <span className="text-indigo-200 font-semibold whitespace-nowrap">
+                    {item.price} ₺
+                  </span>
                   <button
                     onClick={() => confirmDelete(item.id)}
-                    aria-label={`Delete ${item.name}`}
-                    className="ml-0 sm:ml-4 mr-0 sm:mr-4 p-2 text-red-500 hover:text-red-700 rounded transition-colors duration-200 self-start sm:self-auto"
+                    className="text-red-400 hover:text-red-600 p-1"
                     title="Sil"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      className="h-6 w-6"
+                      className="h-5 w-5 sm:h-6 sm:w-6"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -297,17 +261,18 @@ export default function Home() {
                       />
                     </svg>
                   </button>
-                </li>
-              ))}
-            </ul>
-            {items.length > 0 && (
-              <div className="flex justify-between p-3 text-white font-semibold">
-                <span>Total</span>
-                <span>{total.toFixed(2)} ₺</span>
-              </div>
-            )}
-          </div>
-        </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          {items.length > 0 && (
+            <div className="mt-6 flex justify-between items-center text-indigo-300 font-semibold text-xl border-t border-indigo-600 pt-4">
+              <span>Toplam</span>
+              <span>{total.toFixed(2)} ₺</span>
+            </div>
+          )}
+        </section>
       </main>
     );
 

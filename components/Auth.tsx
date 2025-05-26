@@ -65,7 +65,7 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-purple-700 to-indigo-600 p-4">
-      <ToastContainer position="top-right" autoClose={3000} />
+      <ToastContainer position="top-right" autoClose={1500} />
       <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
         <h2 className="text-2xl font-semibold text-center mb-6">
           {isRegister ? "Kayıt Ol" : "Giriş Yap"}
