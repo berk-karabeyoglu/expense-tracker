@@ -224,7 +224,7 @@ export default function Home() {
             {items.map((item) => (
               <li
                 key={item.id}
-                className="flex items-center justify-between bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg transition-colors"
+                className="flex items-center justify-between bg-slate-950 md:hover:bg-indigo-900 p-4 rounded-lg transition-colors"
               >
                 {/* Sol taraf: Ürün adı + tarih */}
                 <div className="flex flex-col flex-1 min-w-0">

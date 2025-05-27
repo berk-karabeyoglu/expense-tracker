@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { auth, db } from "@/app/firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  setPersistence,
 } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -18,11 +20,30 @@ export default function Auth() {
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false); // Beni Hatırla
+
+  // 🎯 sayfa açıldığında localStorage kontrolü
+  useEffect(() => {
+    const storedRememberMe = localStorage.getItem("rememberMe");
+    if (storedRememberMe === "true") {
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
     try {
+      // ✅ Kalıcılık ayarı: checkbox'a göre
+      await setPersistence(
+        auth,
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      );
+
+      // ✅ localStorage'a kaydet
+      localStorage.setItem("rememberMe", rememberMe.toString());
+
       if (isRegister) {
         const userCredential = await createUserWithEmailAndPassword(
           auth,
@@ -30,20 +51,19 @@ export default function Auth() {
           password
         );
 
-        // Kullanıcı adı Firestore users koleksiyonuna ekle
         if (userCredential.user) {
           await setDoc(doc(db, "users", userCredential.user.uid), {
             name: name.trim(),
             email: email,
           });
         }
+
         toast.success("Kayıt başarılı!");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         toast.success("Giriş başarılı!");
       }
     } catch (error: any) {
-      // Daha kullanıcı dostu mesajlar için hata kodlarını kontrol edelim
       if (error.code === "auth/user-not-found") {
         toast.error("Kullanıcı bulunamadı.");
       } else if (error.code === "auth/wrong-password") {
@@ -60,6 +80,7 @@ export default function Auth() {
         toast.error("Bir hata oluştu: " + error.message);
       }
     }
+
     setLoading(false);
   };
 
@@ -108,6 +129,7 @@ export default function Auth() {
               tabIndex={-1}
               aria-label={showPassword ? "Şifreyi gizle" : "Şifreyi göster"}
             >
+              {/* Göster / Gizle ikonları */}
               {showPassword ? (
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -152,6 +174,27 @@ export default function Auth() {
               )}
             </button>
           </div>
+
+          {/* ✅ Beni Hatırla */}
+          {!isRegister && (
+            <div className="flex items-center">
+              <input
+                id="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                disabled={loading}
+              />
+              <label
+                htmlFor="rememberMe"
+                className="ml-2 block text-sm text-gray-900"
+              >
+                Beni hatırla
+              </label>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
