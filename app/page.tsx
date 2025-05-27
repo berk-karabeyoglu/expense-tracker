@@ -29,20 +29,68 @@ export default function Home() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [authChecked, setAuthChecked] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [filterMonth, setFilterMonth] = useState<number | "">("");
+  const [filterYear, setFilterYear] = useState<number | "">("");
 
   const itemRef = useRef<HTMLInputElement | null>(null);
 
-  // Bugünün tarihi
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  let mm: string | number = today.getMonth() + 1;
-  let dd: string | number = today.getDate();
-  if (dd < 10) dd = "0" + dd;
-  if (mm < 10) mm = "0" + mm;
-  const formattedToday = `${dd}/${mm}/${yyyy}`;
+  // Ay isimleri dizisi
+  const monthNames = [
+    "Ocak",
+    "Şubat",
+    "Mart",
+    "Nisan",
+    "Mayıs",
+    "Haziran",
+    "Temmuz",
+    "Ağustos",
+    "Eylül",
+    "Ekim",
+    "Kasım",
+    "Aralık",
+  ];
+
+  // Filtre yardımcı fonksiyonlar
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+
+  const handleFilterThisMonth = () => {
+    setFilterMonth(currentMonth);
+    setFilterYear(currentYear);
+  };
+
+  const handleFilterLastMonth = () => {
+    const lastMonth = new Date(currentYear, currentMonth - 2);
+    setFilterMonth(lastMonth.getMonth() + 1);
+    setFilterYear(lastMonth.getFullYear());
+  };
+
+  const handleFilterThisYear = () => {
+    setFilterMonth("");
+    setFilterYear(currentYear);
+  };
+
+  const handleClearFilters = () => {
+    setFilterMonth("");
+    setFilterYear("");
+  };
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const monthValue = Number(e.target.value) || "";
+    setFilterMonth(monthValue);
+    if (!filterYear) {
+      setFilterYear(new Date().getFullYear());
+    }
+  };
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const yearValue = Number(e.target.value) || "";
+    setFilterYear(yearValue);
+  };
 
   // Kullanıcıyı dinle
   useEffect(() => {
@@ -69,31 +117,58 @@ export default function Home() {
     }
 
     setLoading(true);
-    const q = query(collection(db, "items"), where("userId", "==", user.uid));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const itemsArr: any[] = [];
-      querySnapshot.forEach((doc) =>
-        itemsArr.push({ ...doc.data(), id: doc.id })
+
+    let q = query(collection(db, "items"), where("userId", "==", user.uid));
+
+    if (filterMonth && filterYear) {
+      const start = new Date(filterYear, filterMonth - 1, 1, 0, 0, 0, 0);
+      const end = new Date(filterYear, filterMonth, 0, 23, 59, 59, 999);
+      q = query(
+        q,
+        where("createdAt", ">=", start),
+        where("createdAt", "<=", end)
       );
-      itemsArr.sort((a, b) => {
-        if (!a.createdAt || !b.createdAt) return 0;
-        const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : 0;
-        const bTime = b.createdAt.toDate ? b.createdAt.toDate().getTime() : 0;
-        return bTime - aTime;
-      });
-      setItems(itemsArr);
-      const totalPrice = itemsArr.reduce(
-        (sum, item) => sum + parseFloat(item.price),
-        0
+    } else if (filterYear) {
+      const start = new Date(filterYear, 0, 1, 0, 0, 0, 0);
+      const end = new Date(filterYear, 11, 31, 23, 59, 59, 999);
+      q = query(
+        q,
+        where("createdAt", ">=", start),
+        where("createdAt", "<=", end)
       );
-      setTotal(totalPrice);
-      setLoading(false);
-    });
+    }
+
+    const unsubscribe = onSnapshot(
+      q,
+      (querySnapshot) => {
+        const itemsArr: any[] = [];
+        querySnapshot.forEach((doc) =>
+          itemsArr.push({ ...doc.data(), id: doc.id })
+        );
+        itemsArr.sort((a, b) => {
+          const aTime = a.createdAt?.toDate()?.getTime() || 0;
+          const bTime = b.createdAt?.toDate()?.getTime() || 0;
+          return bTime - aTime;
+        });
+        setItems(itemsArr);
+        const totalPrice = itemsArr.reduce(
+          (sum, item) => sum + parseFloat(item.price),
+          0
+        );
+        setTotal(totalPrice);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Firestore snapshot error:", error);
+        toast.error("Veriler alınırken bir hata oluştu.");
+        setLoading(false);
+      }
+    );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, filterMonth, filterYear]);
 
-  // Ekle
+  // Harcama ekle
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return toast.error("Lütfen önce giriş yapın.");
@@ -106,22 +181,18 @@ export default function Home() {
       await addDoc(collection(db, "items"), {
         name: newItem.name.trim(),
         price: newItem.price,
-        creationDate: formattedToday,
+        creationDate: `${new Date().toLocaleDateString("tr-TR")}`,
         userId: user.uid,
         createdAt: serverTimestamp(),
       });
       setNewItem({ name: "", price: "", creationDate: "" });
       itemRef.current?.focus();
-      toast.success("Harcama eklendi!", {
-        position: "top-right",
-        autoClose: 1500,
-      });
+      toast.success("Harcama eklendi!", { autoClose: 1500 });
     } catch {
       toast.error("Harcamayı eklerken hata oluştu.");
     }
   };
 
-  // Silme onayı
   const confirmDelete = (id: string) => {
     setPendingDeleteId(id);
     toast.info(
@@ -154,127 +225,194 @@ export default function Home() {
     );
   };
 
-  // Sil
+  // Harcama sil
   const deleteItem = async (id: string) => {
     try {
       await deleteDoc(doc(db, "items", id));
-      toast.success("Harcama silindi.", {
-        position: "top-right",
-        autoClose: 1500,
-      });
-      setPendingDeleteId(null);
+      toast.success("Harcama silindi.", { autoClose: 1500 });
     } catch {
       toast.error("Silme işlemi başarısız.");
     }
   };
 
   if (!authChecked) return <Loading />;
+  if (!user) return <Auth />;
   if (loading) return <Loading />;
 
-  if (user)
-    return (
-      <main className="flex min-h-screen flex-col bg-slate-900 px-2 sm:px-6 py-6">
-        <ToastContainer />
-        <header className="max-w-4xl mx-auto w-full flex justify-between items-center py-4 mb-4 sm:px-0 px-4 text-white">
-          <h1 className="text-3xl font-bold">Harcamalarım</h1>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline">
-              Hoşgeldin, <strong>{username || user.email}</strong>
-            </span>
-            <button
-              onClick={() => auth.signOut()}
-              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
-            >
-              Çıkış
-            </button>
-          </div>
-        </header>
-
-        <section className="w-full max-w-4xl mx-auto bg-slate-800 p-4 sm:p-6 rounded-lg shadow-lg text-white">
-          <form
-            onSubmit={addItem}
-            className="flex flex-col sm:grid sm:grid-cols-6 gap-3"
+  return (
+    <main className="flex min-h-screen flex-col bg-slate-900 px-4 py-6">
+      <ToastContainer />
+      <header className="max-w-4xl mx-auto w-full flex justify-between items-center py-4 mb-4 text-white">
+        <h1 className="text-3xl font-bold">Harcamalarım</h1>
+        <div className="flex items-center gap-4">
+          <span className="hidden sm:inline">
+            Hoşgeldin, <strong>{username || user.email}</strong>
+          </span>
+          <button
+            onClick={() => auth.signOut()}
+            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
           >
-            <input
-              ref={itemRef}
-              value={newItem.name}
-              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              className="w-full sm:col-span-3 p-4 text-gray-700 rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-              type="text"
-              placeholder="Ürün Adı"
-            />
-            <input
-              value={newItem.price}
-              onChange={(e) =>
-                setNewItem({ ...newItem, price: e.target.value })
-              }
-              className="w-full sm:col-span-2 p-4 rounded-lg border text-gray-700 border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-lg"
-              type="number"
-              placeholder="₺"
-            />
-            <button
-              type="submit"
-              className="w-full sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-4 text-3xl font-bold transition"
-            >
-              +
-            </button>
-          </form>
+            Çıkış
+          </button>
+        </div>
+      </header>
 
-          <ul className="mt-6 space-y-3">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between bg-slate-950 md:hover:bg-indigo-900 p-4 rounded-lg transition-colors"
-              >
-                {/* Sol taraf: Ürün adı + tarih */}
-                <div className="flex flex-col flex-1 min-w-0">
-                  <span className="text-white font-medium capitalize truncate">
-                    {item.name}
-                  </span>
-                  <span className="text-xs text-gray-400 mt-1">
-                    {item.creationDate}
-                  </span>
-                </div>
-
-                {/* Sağ taraf: Fiyat + Sil butonu */}
-                <div className="flex flex-col items-end justify-between ml-4 gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <span className="text-indigo-200 font-semibold whitespace-nowrap">
-                    {item.price} ₺
-                  </span>
-                  <button
-                    onClick={() => confirmDelete(item.id)}
-                    className="text-red-400 hover:text-red-600 p-1"
-                    title="Sil"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-5 w-5 sm:h-6 sm:w-6"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              </li>
+      {/* Filtreler */}
+      <div className="max-w-4xl mx-auto w-full text-white mb-6">
+        <div className="flex gap-3 flex-wrap mb-2">
+          <select
+            value={filterMonth}
+            onChange={handleMonthChange}
+            className="p-2 bg-slate-800 border border-gray-600 rounded appearance-none pr-8 relative text-white"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 0.75rem center",
+              backgroundSize: "1rem",
+            }}
+          >
+            <option value="">Tüm Aylar</option>
+            {[...Array(12)].map((_, i) => (
+              <option key={i + 1} value={i + 1}>
+                {monthNames[i]}
+              </option>
             ))}
-          </ul>
+          </select>
+          <select
+            value={filterYear}
+            onChange={handleYearChange}
+            className="p-2 bg-slate-800 border border-gray-600 rounded appearance-none pr-8 text-white"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 0.75rem center",
+              backgroundSize: "1rem",
+            }}
+          >
+            <option value="">Tüm Yıllar</option>
+            {[...Array(5)].map((_, i) => {
+              const year = new Date().getFullYear() - i;
+              return (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4">
+          {[
+            {
+              label: "Bu Ay",
+              onClick: handleFilterThisMonth,
+              active:
+                filterMonth === currentMonth && filterYear === currentYear,
+            },
+            {
+              label: "Geçen Ay",
+              onClick: handleFilterLastMonth,
+              active:
+                filterMonth === currentMonth - 1 && filterYear === currentYear,
+            },
+            {
+              label: "Bu Yıl",
+              onClick: handleFilterThisYear,
+              active: filterMonth === "" && filterYear === currentYear,
+            },
+            {
+              label: "Tümünü Göster",
+              onClick: handleClearFilters,
+              active: filterMonth === "" && filterYear === "",
+            },
+          ].map(({ label, onClick, active }) => (
+            <button
+              key={label}
+              onClick={onClick}
+              className={`px-3 py-2 rounded text-sm transition flex items-center gap-2 ${
+                active ? "bg-indigo-500" : "bg-slate-700 hover:bg-slate-600"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {items.length > 0 && (
-            <div className="mt-6 flex justify-between items-center text-indigo-300 font-semibold text-xl border-t border-indigo-600 pt-4">
-              <span>Toplam</span>
-              <span>{total.toFixed(2)} ₺</span>
-            </div>
-          )}
-        </section>
-      </main>
-    );
+      {/* Harcama Formu */}
+      <section className="max-w-4xl mx-auto w-full bg-slate-800 p-4 sm:p-6 rounded-lg shadow-lg text-white">
+        <form
+          onSubmit={addItem}
+          className="flex flex-col sm:grid sm:grid-cols-6 gap-3"
+        >
+          <input
+            ref={itemRef}
+            value={newItem.name}
+            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+            className="sm:col-span-3 p-4 text-gray-700 rounded-lg border border-gray-700"
+            type="text"
+            placeholder="Ürün Adı"
+          />
+          <input
+            value={newItem.price}
+            onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
+            className="sm:col-span-2 p-4 text-gray-700 rounded-lg border border-gray-700"
+            type="number"
+            placeholder="₺"
+          />
+          <button
+            type="submit"
+            className="sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-4 text-3xl font-bold"
+          >
+            +
+          </button>
+        </form>
 
-  return <Auth />;
+        {/* Harcama Listesi */}
+        <ul className="mt-6 space-y-3">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex justify-between items-center bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg"
+            >
+              <div>
+                <div className="font-medium">{item.name}</div>
+                <div className="text-xs text-gray-400">{item.creationDate}</div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="font-semibold">{item.price} ₺</span>
+                <button
+                  onClick={() => confirmDelete(item.id)}
+                  className="text-red-400 hover:text-red-600"
+                >
+                  ✕
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {/* Boş liste mesajı */}
+
+        {items.length === 0 && (
+          <div className="mt-4 text-center text-indigo-400 font-semibold">
+            {filterMonth && filterYear
+              ? `${
+                  monthNames[filterMonth - 1]
+                } ${filterYear} ayına ait harcamanız bulunmamaktadır.`
+              : filterYear
+              ? `${filterYear} yılına ait harcamanız bulunmamaktadır.`
+              : "Harcamaya ait veri bulunamadı."}
+          </div>
+        )}
+
+        {/* Toplam */}
+        {items.length > 0 && (
+          <div className="mt-6 flex justify-between items-center text-indigo-300 font-semibold text-xl border-t border-indigo-600 pt-4">
+            <span>Toplam</span>
+            <span>{total.toFixed(2)} ₺</span>
+          </div>
+        )}
+      </section>
+    </main>
+  );
 }
