@@ -11,6 +11,7 @@ import {
   query,
   serverTimestamp,
   where,
+  updateDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { db, auth } from "@/app/firebase";
@@ -25,6 +26,13 @@ export default function Home() {
     name: "",
     price: "",
     creationDate: "",
+    category: "",
+  });
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    price: "",
+    category: "",
   });
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -34,10 +42,15 @@ export default function Home() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [filterMonth, setFilterMonth] = useState<number | "">("");
   const [filterYear, setFilterYear] = useState<number | "">("");
+  const [filterCategory, setFilterCategory] = useState("");
+  const [originalEditForm, setOriginalEditForm] = useState({
+    name: "",
+    price: "",
+    category: "",
+  });
 
   const itemRef = useRef<HTMLInputElement | null>(null);
 
-  // Ay isimleri dizisi
   const monthNames = [
     "Ocak",
     "Şubat",
@@ -53,7 +66,6 @@ export default function Home() {
     "Aralık",
   ];
 
-  // Filtre yardımcı fonksiyonlar
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -64,9 +76,14 @@ export default function Home() {
   };
 
   const handleFilterLastMonth = () => {
-    const lastMonth = new Date(currentYear, currentMonth - 2);
-    setFilterMonth(lastMonth.getMonth() + 1);
-    setFilterYear(lastMonth.getFullYear());
+    let year = currentYear;
+    let month = currentMonth - 1;
+    if (month === 0) {
+      month = 12;
+      year = year - 1;
+    }
+    setFilterMonth(month);
+    setFilterYear(year);
   };
 
   const handleFilterThisYear = () => {
@@ -77,6 +94,7 @@ export default function Home() {
   const handleClearFilters = () => {
     setFilterMonth("");
     setFilterYear("");
+    setFilterCategory("");
   };
 
   const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -92,7 +110,39 @@ export default function Home() {
     setFilterYear(yearValue);
   };
 
-  // Kullanıcıyı dinle
+  const startEditing = (item: any) => {
+    setEditItemId(item.id);
+    setEditForm({
+      name: item.name,
+      price: item.price,
+      category: item.category || "",
+    });
+    setOriginalEditForm({
+      name: item.name,
+      price: item.price,
+      category: item.category || "",
+    });
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editForm.name || !editForm.price) {
+      toast.warn("Ad veya fiyat boş olamaz.");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "items", id), {
+        name: editForm.name.trim(),
+        price: editForm.price,
+        category: editForm.category || "Diğer",
+      });
+      toast.success("Harcama güncellendi.", { autoClose: 1500 });
+      setEditItemId(null);
+    } catch {
+      toast.error("Güncelleme başarısız.");
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -108,7 +158,6 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Verileri getir
   useEffect(() => {
     if (!user) {
       setItems([]);
@@ -118,25 +167,34 @@ export default function Home() {
 
     setLoading(true);
 
-    let q = query(collection(db, "items"), where("userId", "==", user.uid));
+    const constraints = [where("userId", "==", user.uid)];
 
-    if (filterMonth && filterYear) {
-      const start = new Date(filterYear, filterMonth - 1, 1, 0, 0, 0, 0);
-      const end = new Date(filterYear, filterMonth, 0, 23, 59, 59, 999);
-      q = query(
-        q,
-        where("createdAt", ">=", start),
-        where("createdAt", "<=", end)
-      );
-    } else if (filterYear) {
-      const start = new Date(filterYear, 0, 1, 0, 0, 0, 0);
-      const end = new Date(filterYear, 11, 31, 23, 59, 59, 999);
-      q = query(
-        q,
-        where("createdAt", ">=", start),
-        where("createdAt", "<=", end)
-      );
+    // Tarih filtreleri
+    if (filterYear) {
+      if (filterMonth) {
+        // Ay ve yıl seçilmiş
+        const start = new Date(filterYear, filterMonth - 1, 1, 0, 0, 0, 0);
+        const end = new Date(filterYear, filterMonth, 0, 23, 59, 59, 999);
+        constraints.push(where("createdAt", ">=", start));
+        constraints.push(where("createdAt", "<=", end));
+      } else {
+        // Sadece yıl seçilmiş
+        const start = new Date(filterYear, 0, 1, 0, 0, 0, 0);
+        const end = new Date(filterYear, 11, 31, 23, 59, 59, 999);
+        constraints.push(where("createdAt", ">=", start));
+        constraints.push(where("createdAt", "<=", end));
+      }
     }
+
+    // Kategori filtresi
+    if (filterCategory && filterCategory !== "") {
+      constraints.push(where("category", "==", filterCategory));
+    }
+
+    console.log("constraints:", constraints);
+
+    const q = query(collection(db, "items"), ...constraints);
+    console.log("Firestore query constraints:", constraints);
 
     const unsubscribe = onSnapshot(
       q,
@@ -146,8 +204,8 @@ export default function Home() {
           itemsArr.push({ ...doc.data(), id: doc.id })
         );
         itemsArr.sort((a, b) => {
-          const aTime = a.createdAt?.toDate()?.getTime() || 0;
-          const bTime = b.createdAt?.toDate()?.getTime() || 0;
+          const aTime = a.createdAt?.toDate?.().getTime() || 0;
+          const bTime = b.createdAt?.toDate?.().getTime() || 0;
           return bTime - aTime;
         });
         setItems(itemsArr);
@@ -166,9 +224,8 @@ export default function Home() {
     );
 
     return () => unsubscribe();
-  }, [user, filterMonth, filterYear]);
+  }, [user, filterMonth, filterYear, filterCategory]);
 
-  // Harcama ekle
   const addItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return toast.error("Lütfen önce giriş yapın.");
@@ -184,8 +241,9 @@ export default function Home() {
         creationDate: `${new Date().toLocaleDateString("tr-TR")}`,
         userId: user.uid,
         createdAt: serverTimestamp(),
+        category: newItem.category || "Diğer",
       });
-      setNewItem({ name: "", price: "", creationDate: "" });
+      setNewItem({ name: "", price: "", creationDate: "", category: "" });
       itemRef.current?.focus();
       toast.success("Harcama eklendi!", { autoClose: 1500 });
     } catch {
@@ -214,7 +272,7 @@ export default function Home() {
               setPendingDeleteId(null);
               toast.dismiss();
             }}
-            className="bg-gray-500 px-3 py-1 rounded text-white :hover:bg-opacity-80 transition"
+            className="bg-gray-500 px-3 py-1 rounded text-white hover:bg-opacity-80 transition"
             title="İptal"
           >
             Hayır
@@ -225,7 +283,6 @@ export default function Home() {
     );
   };
 
-  // Harcama sil
   const deleteItem = async (id: string) => {
     try {
       await deleteDoc(doc(db, "items", id));
@@ -234,6 +291,11 @@ export default function Home() {
       toast.error("Silme işlemi başarısız.");
     }
   };
+
+  const isEditChanged =
+    editForm.name !== originalEditForm.name ||
+    editForm.price !== originalEditForm.price ||
+    editForm.category !== originalEditForm.category;
 
   if (!authChecked) return <Loading />;
   if (!user) return <Auth />;
@@ -299,7 +361,31 @@ export default function Home() {
               );
             })}
           </select>
+
+          {/* Kategori filtresi */}
+          <select
+            value={filterCategory}
+            onChange={(e) => {
+              console.log("Kategori seçildi:", e.target.value);
+              setFilterCategory(e.target.value);
+            }}
+            className="p-2 bg-slate-800 border border-gray-600 rounded appearance-none pr-8 text-white"
+            style={{
+              backgroundImage: `url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 0.75rem center",
+              backgroundSize: "1rem",
+            }}
+          >
+            <option value="">Tüm Kategoriler</option>
+            <option value="Yiyecek">Yiyecek</option>
+            <option value="Ulaşım">Ulaşım</option>
+            <option value="Eğlence">Eğlence</option>
+            <option value="Fatura">Fatura</option>
+            <option value="Diğer">Diğer</option>
+          </select>
         </div>
+
         <div className="flex flex-wrap gap-2 mt-4">
           {[
             {
@@ -322,7 +408,8 @@ export default function Home() {
             {
               label: "Tümünü Göster",
               onClick: handleClearFilters,
-              active: filterMonth === "" && filterYear === "",
+              active:
+                filterMonth === "" && filterYear === "" && !filterCategory,
             },
           ].map(({ label, onClick, active }) => (
             <button
@@ -338,7 +425,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Harcama Formu */}
+      {/* Form */}
       <section className="max-w-4xl mx-auto w-full bg-slate-800 p-4 sm:p-6 rounded-lg shadow-lg text-white">
         <form
           onSubmit={addItem}
@@ -348,17 +435,41 @@ export default function Home() {
             ref={itemRef}
             value={newItem.name}
             onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-            className="sm:col-span-3 p-4 text-gray-700 rounded-lg border border-gray-700"
+            className="sm:col-span-2 p-4 text-gray-700 rounded-lg border border-gray-700"
             type="text"
             placeholder="Ürün Adı"
           />
           <input
             value={newItem.price}
             onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-            className="sm:col-span-2 p-4 text-gray-700 rounded-lg border border-gray-700"
+            className="sm:col-span-1 p-4 text-gray-700 rounded-lg border border-gray-700"
             type="number"
             placeholder="₺"
           />
+          <select
+            value={newItem.category}
+            onChange={(e) =>
+              setNewItem({ ...newItem, category: e.target.value })
+            }
+            className="sm:col-span-2 p-4 pr-10 text-gray-700 rounded-lg border border-gray-300 appearance-none bg-white"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml;utf8,<svg fill='black' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>\")",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 0.75rem center",
+              backgroundSize: "1rem",
+            }}
+          >
+            <option value="" disabled>
+              Kategori Seç
+            </option>
+            <option value="Yiyecek">Yiyecek</option>
+            <option value="Ulaşım">Ulaşım</option>
+            <option value="Eğlence">Eğlence</option>
+            <option value="Fatura">Fatura</option>
+            <option value="Diğer">Diğer</option>
+          </select>
+
           <button
             type="submit"
             className="sm:col-span-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg p-4 text-3xl font-bold"
@@ -367,45 +478,125 @@ export default function Home() {
           </button>
         </form>
 
-        {/* Harcama Listesi */}
+        {/* Liste */}
         <ul className="mt-6 space-y-3">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className="flex justify-between items-center bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg"
-            >
-              <div>
-                <div className="font-medium">{item.name}</div>
-                <div className="text-xs text-gray-400">{item.creationDate}</div>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="font-semibold">{item.price} ₺</span>
-                <button
-                  onClick={() => confirmDelete(item.id)}
-                  className="text-red-400 hover:text-red-600"
-                >
-                  ✕
-                </button>
-              </div>
-            </li>
-          ))}
+          {items.map((item) =>
+            item.id === editItemId ? (
+              <li
+                key={item.id}
+                className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg gap-4"
+              >
+                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                  <input
+                    value={editForm.name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, name: e.target.value })
+                    }
+                    className="p-2 rounded bg-slate-800 text-white border border-gray-600"
+                    placeholder="Ad"
+                  />
+                  <input
+                    type="number"
+                    value={editForm.price}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, price: e.target.value })
+                    }
+                    className="p-2 rounded bg-slate-800 text-white border border-gray-600"
+                    placeholder="₺"
+                  />
+                  <select
+                    value={editForm.category}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, category: e.target.value })
+                    }
+                    className="p-2 pr-8 rounded bg-slate-800 text-white border border-gray-600 appearance-none"
+                    style={{
+                      backgroundImage:
+                        "url(\"data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>\")",
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 0.75rem center",
+                      backgroundSize: "1rem",
+                    }}
+                  >
+                    <option value="" disabled>
+                      Kategori Seç
+                    </option>
+                    <option value="Yiyecek">Yiyecek</option>
+                    <option value="Ulaşım">Ulaşım</option>
+                    <option value="Eğlence">Eğlence</option>
+                    <option value="Fatura">Fatura</option>
+                    <option value="Diğer">Diğer</option>
+                  </select>
+                </div>
+                <div className="flex gap-2 mt-2 sm:mt-0 justify-end w-full sm:w-auto">
+                  <button
+                    onClick={() => setEditItemId(null)}
+                    className="bg-gray-600 text-white px-3 py-1 rounded hover:bg-gray-700"
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    onClick={() => saveEdit(item.id)}
+                    disabled={!isEditChanged}
+                    className={`px-3 py-1 rounded text-white transition ${
+                      isEditChanged
+                        ? "bg-green-600 hover:bg-green-700"
+                        : "bg-gray-600 cursor-not-allowed opacity-40"
+                    }`}
+                  >
+                    Kaydet
+                  </button>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={item.id}
+                className="flex justify-between items-center bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg"
+              >
+                <div>
+                  <div className="font-medium">{item.name}</div>
+                  <div className="text-xs text-gray-400">
+                    {item.creationDate} | {item.category || "Kategori Yok"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="font-semibold">{item.price} ₺</span>
+                  <button
+                    onClick={() => startEditing(item)}
+                    className="text-indigo-400 hover:text-indigo-600"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() => confirmDelete(item.id)}
+                    className="text-red-400 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </li>
+            )
+          )}
         </ul>
-
-        {/* Boş liste mesajı */}
 
         {items.length === 0 && (
           <div className="mt-4 text-center text-indigo-400 font-semibold">
-            {filterMonth && filterYear
+            {filterMonth && filterYear && filterCategory
+              ? `${
+                  monthNames[filterMonth - 1]
+                } ${filterYear} ayına ait "${filterCategory}" kategorisinde harcamanız bulunmamaktadır.`
+              : filterMonth && filterYear
               ? `${
                   monthNames[filterMonth - 1]
                 } ${filterYear} ayına ait harcamanız bulunmamaktadır.`
+              : filterYear && filterCategory
+              ? `${filterYear} yılına ait "${filterCategory}" kategorisinde harcamanız bulunmamaktadır.`
               : filterYear
               ? `${filterYear} yılına ait harcamanız bulunmamaktadır.`
               : "Harcamaya ait veri bulunamadı."}
           </div>
         )}
 
-        {/* Toplam */}
         {items.length > 0 && (
           <div className="mt-6 flex justify-between items-center text-indigo-300 font-semibold text-xl border-t border-indigo-600 pt-4">
             <span>Toplam</span>

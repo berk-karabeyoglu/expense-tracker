@@ -12,6 +12,7 @@ import {
 import { doc, setDoc } from "firebase/firestore";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 export default function Auth() {
   const [email, setEmail] = useState("");
@@ -82,6 +83,28 @@ export default function Auth() {
     }
 
     setLoading(false);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      toast.error("Lütfen e-posta adresinizi girin.");
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success(
+        "Şifre sıfırlama bağlantısı e-posta adresinize gönderildi."
+      );
+    } catch (error: any) {
+      if (error.code === "auth/user-not-found") {
+        toast.error("Bu e-posta ile kayıtlı kullanıcı bulunamadı.");
+      } else if (error.code === "auth/invalid-email") {
+        toast.error("Geçersiz e-posta adresi.");
+      } else {
+        toast.error("Bir hata oluştu: " + error.message);
+      }
+    }
   };
 
   return (
@@ -177,21 +200,35 @@ export default function Auth() {
 
           {/* ✅ Beni Hatırla */}
           {!isRegister && (
-            <div className="flex items-center">
-              <input
-                id="rememberMe"
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                disabled={loading}
-              />
-              <label
-                htmlFor="rememberMe"
-                className="ml-2 block text-sm text-gray-900"
-              >
-                Beni hatırla
-              </label>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="rememberMe"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  disabled={loading}
+                />
+                <label
+                  htmlFor="rememberMe"
+                  className="ml-2 block text-sm text-gray-900"
+                >
+                  Beni hatırla
+                </label>
+              </div>
+              {!isRegister && (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-sm text-indigo-600 hover:underline focus:outline-none"
+                    disabled={loading}
+                  >
+                    Şifremi unuttum
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
