@@ -19,6 +19,10 @@ import Auth from "@/components/Auth";
 import Loading from "@/components/Loading";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { Pie } from "react-chartjs-2";
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
+
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 export default function Home() {
   const [items, setItems] = useState<any[]>([]);
@@ -48,6 +52,10 @@ export default function Home() {
     price: "",
     category: "",
   });
+  const [categoryTotals, setCategoryTotals] = useState<{
+    [key: string]: number;
+  }>({});
+  const chartRef = useRef<ChartJS | null>(null);
 
   const itemRef = useRef<HTMLInputElement | null>(null);
 
@@ -65,10 +73,38 @@ export default function Home() {
     "Kasım",
     "Aralık",
   ];
+  const categoryColors = [
+    "#4f46e5", // indigo
+    "#22c55e", // green
+    "#ef4444", // red
+    "#f59e0b", // amber
+    "#14b8a6", // teal
+    "#a855f7", // purple
+    "#6b7280", // gray
+  ];
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
+
+  const handlePieClick = (event: any) => {
+    if (!chartRef.current) return;
+
+    const chart = chartRef.current;
+    const elements = chart.getElementsAtEventForMode(
+      event,
+      "nearest",
+      { intersect: true },
+      false
+    );
+
+    if (elements.length > 0) {
+      const index = elements[0].index;
+      const clickedCategory = Object.keys(categoryTotals)[index];
+      setFilterCategory(clickedCategory);
+      toast.info(`"${clickedCategory}" kategorisi filtrelendi.`);
+    }
+  };
 
   const handleFilterThisMonth = () => {
     setFilterMonth(currentMonth);
@@ -142,6 +178,18 @@ export default function Home() {
       toast.error("Güncelleme başarısız.");
     }
   };
+
+  useEffect(() => {
+    const totals: { [key: string]: number } = {};
+
+    items.forEach((item) => {
+      const category = item.category || "Diğer";
+      const price = parseFloat(item.price) || 0;
+      totals[category] = (totals[category] || 0) + price;
+    });
+
+    setCategoryTotals(totals);
+  }, [items]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -386,42 +434,47 @@ export default function Home() {
           </select>
         </div>
 
-        <div className="flex flex-wrap gap-2 mt-4">
-          {[
-            {
-              label: "Bu Ay",
-              onClick: handleFilterThisMonth,
-              active:
-                filterMonth === currentMonth && filterYear === currentYear,
-            },
-            {
-              label: "Geçen Ay",
-              onClick: handleFilterLastMonth,
-              active:
-                filterMonth === currentMonth - 1 && filterYear === currentYear,
-            },
-            {
-              label: "Bu Yıl",
-              onClick: handleFilterThisYear,
-              active: filterMonth === "" && filterYear === currentYear,
-            },
-            {
-              label: "Tümünü Göster",
-              onClick: handleClearFilters,
-              active:
-                filterMonth === "" && filterYear === "" && !filterCategory,
-            },
-          ].map(({ label, onClick, active }) => (
-            <button
-              key={label}
-              onClick={onClick}
-              className={`px-3 py-2 rounded text-sm transition flex items-center gap-2 ${
-                active ? "bg-indigo-500" : "bg-slate-700 hover:bg-slate-600"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="relative w-full sm:w-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 w-full">
+            {[
+              {
+                label: "Bu Ay",
+                onClick: handleFilterThisMonth,
+                active:
+                  filterMonth === currentMonth && filterYear === currentYear,
+              },
+              {
+                label: "Geçen Ay",
+                onClick: handleFilterLastMonth,
+                active:
+                  filterMonth === currentMonth - 1 &&
+                  filterYear === currentYear,
+              },
+              {
+                label: "Bu Yıl",
+                onClick: handleFilterThisYear,
+                active: filterMonth === "" && filterYear === currentYear,
+              },
+              {
+                label: "Tümünü Göster",
+                onClick: handleClearFilters,
+                active:
+                  filterMonth === "" && filterYear === "" && !filterCategory,
+              },
+            ].map(({ label, onClick, active }) => (
+              <button
+                key={label}
+                onClick={onClick}
+                className={`w-full p-3 rounded-lg text-sm font-medium transition text-center ${
+                  active
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-700 text-white hover:bg-slate-600"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -551,7 +604,7 @@ export default function Home() {
             ) : (
               <li
                 key={item.id}
-                className="flex justify-between items-center bg-slate-950 hover:bg-indigo-900 p-4 rounded-lg"
+                className="flex justify-between items-center bg-slate-950 md:hover:bg-indigo-900 p-4 rounded-lg"
               >
                 <div>
                   <div className="font-medium">{item.name}</div>
@@ -601,6 +654,82 @@ export default function Home() {
           <div className="mt-6 flex justify-between items-center text-indigo-300 font-semibold text-xl border-t border-indigo-600 pt-4">
             <span>Toplam</span>
             <span>{total.toFixed(2)} ₺</span>
+          </div>
+        )}
+
+        <div className="flex items-center my-16 text-yellow-500">
+          <div className="flex-grow border-t border-yellow-300"></div>
+          <span className="mx-4 text-3xl animate-bounce">💸</span>
+          <div className="flex-grow border-t border-yellow-300"></div>
+        </div>
+
+        {Object.keys(categoryTotals).length > 0 && (
+          <div className="mt-4 bg-slate-800 p-4 rounded-lg">
+            <div className="mt-2 mb-6 flex flex-wrap justify-center gap-3 text-xs">
+              {Object.entries(categoryTotals).map(([category], index) => (
+                <div
+                  key={category}
+                  className="flex items-center gap-1 whitespace-nowrap"
+                  style={{ minWidth: "80px" }} // Kutucuk biraz daha küçük
+                >
+                  <span
+                    className="inline-block w-4 h-4 rounded-full"
+                    style={{
+                      backgroundColor:
+                        categoryColors[index % categoryColors.length],
+                    }}
+                  ></span>
+                  <span>{category}</span>
+                </div>
+              ))}
+            </div>
+
+            <Pie
+              data={{
+                labels: Object.keys(categoryTotals),
+                datasets: [
+                  {
+                    data: Object.values(categoryTotals),
+                    backgroundColor: categoryColors,
+                    borderColor: "#1f2937",
+                    borderWidth: 1,
+                  },
+                ],
+              }}
+              options={{
+                onClick: handlePieClick,
+                plugins: {
+                  legend: { display: false }, // sadece yazılı listeyi gösteriyoruz
+                },
+              }}
+            />
+            <ul className="mt-4 text-white text-sm rounded overflow-hidden">
+              {Object.entries(categoryTotals).map(
+                ([category, amount], index) => (
+                  <li
+                    key={category}
+                    className={`flex items-center justify-between px-4 py-2 ${
+                      index < Object.entries(categoryTotals).length - 1
+                        ? "border-b border-gray-600"
+                        : ""
+                    }`}
+                    style={{ borderLeft: "none", borderRight: "none" }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-3 h-3 rounded-full"
+                        style={{
+                          backgroundColor:
+                            categoryColors[index % categoryColors.length],
+                        }}
+                      ></span>
+                      <span>{category}</span>
+                    </div>
+                    <span className="font-medium">{amount.toFixed(2)} ₺</span>
+                  </li>
+                )
+              )}
+            </ul>
           </div>
         )}
       </section>
